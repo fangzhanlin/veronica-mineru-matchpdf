@@ -1,0 +1,16 @@
+bak_cpu/
+pdfs/
+outputs_api/
+*.env
+*.txt
+*.log
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
