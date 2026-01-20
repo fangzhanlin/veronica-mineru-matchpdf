@@ -1,4 +1,4 @@
-# Veronica MineRU PDF2MD
+# Veronica MineRU MatchPDF
 
 本项目是一个用于管理学术文献 PDF 并将其批量转换为 Markdown 的工具集。主要包含两个功能模块：
 
@@ -31,7 +31,7 @@ uv run match_pdfs_title_doi/match_records.py
 > 更多匹配规则、参数说明及结果解读，请参考 [MATCH_README.md](match_pdfs_title_doi/MATCH_README.md)。
 
 ### 2. PDF 转 Markdown (Converting)
-使用 MinerU API 进行批量转换。推荐使用异步模式以提高速度。
+使用 MinerU API 进行批量转换。推荐使用异步模式以提高速度。默认采用pdfs文件夹，可自行修改。
 
 ```powershell
 # 使用异步模式，并发处理 3 个文件
