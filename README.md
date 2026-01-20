@@ -351,8 +351,6 @@ def is_processed(self, file_info):
 
 ### 🔀 关于异步和并发处理
 
-**现在支持真正的并发处理！**
-
 使用 `--async --batch-size N` 可以同时处理多个文件：
 
 ```bash
