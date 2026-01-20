@@ -225,6 +225,9 @@ class PDFBatchProcessor(BaseBatchProcessor):
         
         # 按子文件夹统计
         by_subfolder = {}
+        # 检查输出路径冲突 (多个源文件映射到同一个输出文件夹)
+        output_map = {} # output_path -> list of source_paths
+        
         for file_info in files:
             subfolder = str(file_info['subfolder'])
             if subfolder not in by_subfolder:
@@ -232,12 +235,22 @@ class PDFBatchProcessor(BaseBatchProcessor):
             by_subfolder[subfolder]['total'] += 1
             if self.is_processed(file_info):
                 by_subfolder[subfolder]['processed'] += 1
+            
+            # 记录输出路径映射用于冲突检测
+            out_path_str = str(file_info['output_dir'])
+            if out_path_str not in output_map:
+                output_map[out_path_str] = []
+            output_map[out_path_str].append(file_info['path'])
+            
+        # 筛选出有冲突的条目
+        collisions = {k: v for k, v in output_map.items() if len(v) > 1}
         
         return {
             'total': len(files),
             'processed': processed,
             'remaining': len(files) - processed,
             'by_subfolder': by_subfolder,
+            'collisions': collisions,
         }
     
     def process_all_sync(
@@ -614,6 +627,21 @@ def show_statistics(processor: PDFBatchProcessor) -> None:
     print("\n" + "=" * 60)
     print("PDF处理统计信息")
     print("=" * 60)
+    
+    # 检查冲突
+    collisions = stats.get('collisions', {})
+    if collisions:
+        print("\n" + "!" * 60)
+        print(f"⚠️ 警告: 发现 {len(collisions)} 组命名冲突！")
+        print("以下文件会被映射到同一个输出文件夹，可能导致覆盖或跳过：")
+        print("-" * 60)
+        for out_dir, sources in collisions.items():
+            print(f"输出目录: {out_dir}")
+            for src in sources:
+                print(f"  - {src}")
+            print("-" * 30)
+        print("!" * 60 + "\n")
+        
     print(f"  总文件数: {stats['total']}")
     print(f"  已处理: {stats['processed']}")
     print(f"  待处理: {stats['remaining']}")

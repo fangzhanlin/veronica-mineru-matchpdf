@@ -36,6 +36,7 @@ outputs_api/                # 输出目录（自动生成）
 
 ```bash
 uv sync
+.venv\Scripts\Activate.ps1
 ```
 
 ## 配置API密钥
@@ -55,7 +56,7 @@ uv sync
 ### 基本命令
 
 ```bash
-# 显示统计信息（不执行处理）
+# 显示统计信息，注意重复警告（不执行处理）
 uv run batch_convert_api.py --stats
 
 # 使用异步设置处理所有PDF
