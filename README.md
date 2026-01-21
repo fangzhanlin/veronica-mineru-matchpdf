@@ -25,11 +25,11 @@
 ### 1. 匹配文献 (Validating & Matching)
 用于检查现有的 PDF 是否与 Scopus 记录匹配。
 
+
 ```powershell
-```
 uv run .\match_pdfs_title_doi\match_records.py --pdfs-dir ./origin_pdfs --source mongodb --mongo-uri "mongodb://localhost:27017" --mongo-db top-is-papers --mongo-collection papers --recursive --copy-pdfs --copy-dir ./pdfs --clean
 ```
-```
+
 > 更多匹配规则、参数说明及结果解读，请参考 [MATCH_README.md](match_pdfs_title_doi/MATCH_README.md)。
 
 ### 2. PDF 转 Markdown (Converting)
