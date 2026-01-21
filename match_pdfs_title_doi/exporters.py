@@ -343,7 +343,8 @@ class CSVMerger:
                     source_name = csv_file.stem.split('_')[0]
                     
                     for row in reader:
-                        key = row.get(dedup_key, '')
+                        # 支持大小写不同的字段名
+                        key = row.get(dedup_key, '') or row.get(dedup_key.lower(), '')
                         
                         if key in exclude_keys:
                             continue
@@ -406,7 +407,8 @@ class CSVMerger:
             with open(matched_csv_path, 'r', encoding=self.encoding) as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    key = row.get(key_column, '')
+                    # 支持大小写不同的字段名
+                    key = row.get(key_column, '') or row.get(key_column.lower(), '')
                     if key:
                         keys.add(key)
             

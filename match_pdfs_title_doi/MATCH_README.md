@@ -1,5 +1,11 @@
 # 文献数据匹配工具使用指南 (v3.0)
 
+## 快速上手
+
+```
+uv run .\match_pdfs_title_doi\match_records.py --pdfs-dir ./origin_pdfs --source mongodb --mongo-uri "mongodb://localhost:27017" --mongo-db top-is-papers --mongo-collection papers --recursive --copy-pdfs --copy-dir ./pdfs --clean
+```
+
 ## 概述
 
 本工具用于将 PDF 文件与数据源（CSV 或 MongoDB）中的文献记录进行匹配，建立文献数据与 PDF 文件之间的关联。
@@ -19,8 +25,10 @@ match_pdfs_title_doi/
 ├── matcher.py                # 核心匹配引擎（自动检测）
 ├── exporters.py              # 结果导出器 + PDF 复制器
 ├── match_records.py          # 主入口脚本
+├── test_modules.py           # 单元测试脚本
 ├── scopus_csv_records/       # 存放 Scopus 导出的 CSV 文件
 │   └── scopus_*.csv
+├── origin_pdfs/              # 原始 PDF 文件目录
 ├── match_results/            # 匹配结果输出目录
 │   ├── matched/              # 成功匹配的记录
 │   ├── unmatched/            # 未匹配的记录
@@ -166,6 +174,19 @@ uv run match_pdfs_title_doi/match_records.py \
 |------|--------|------|
 | `--copy-pdfs` | False | 是否复制成功匹配的 PDF |
 | `--copy-dir` | `./pdfs` | PDF 复制目标目录 |
+
+#### 扫描参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--recursive` | True | 递归扫描子目录中的 PDF 文件 |
+| `--no-recursive` | - | 不递归扫描子目录 |
+
+#### 清理参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--clean` | False | 运行前清空历史匹配结果记录 |
 
 ## 字段映射
 
@@ -383,6 +404,12 @@ A: v3.0 自动处理以下情况：
 - DOI 格式（如 `isj.12026`）会被自动识别
 
 ## 版本历史
+
+### v3.0.1 (2025-01-21)
+- 修复：MongoDB 数据源字段名大小写兼容问题
+- 新增：`--recursive`/`--no-recursive` 扫描参数
+- 新增：`--clean` 清理历史结果参数
+- 新增：单元测试脚本 `test_modules.py`
 
 ### v3.0.0 (2025-01-20)
 - 简化 API：移除期刊特定配置
