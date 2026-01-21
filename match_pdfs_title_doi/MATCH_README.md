@@ -1,55 +1,323 @@
-# 文献数据匹配工具使用指南
+# 文献数据匹配工具使用指南 (v3.0)
 
 ## 概述
 
-本工具用于将 `pdfs` 文件夹中的 PDF 文件与 Scopus CSV 索引记录进行匹配，建立文献数据与 PDF 文件之间的关联。匹配成功后可用于后续的 MineRU PDF 转换处理。
+本工具用于将 PDF 文件与数据源（CSV 或 MongoDB）中的文献记录进行匹配，建立文献数据与 PDF 文件之间的关联。
+
+**v3.0 新特性**：
+- **自动检测 PDF 格式**：无需配置期刊模式，自动识别 DOI 格式和年份格式
+- **统一处理特殊编码**：自动移除 `#x3f;` 等特殊编码
+- **MongoDB 字段映射**：支持 `doi`/`label`/`uuid` 字段
+- **PDF 复制功能**：成功匹配后可复制 PDF 并以 uuid 重命名
 
 ## 目录结构
 
 ```
 match_pdfs_title_doi/
-├── match_records.py          # 主匹配脚本
+├── __init__.py               # 包入口，导出所有公共 API
+├── data_sources.py           # 数据源抽象层（CSV、MongoDB）
+├── matcher.py                # 核心匹配引擎（自动检测）
+├── exporters.py              # 结果导出器 + PDF 复制器
+├── match_records.py          # 主入口脚本
 ├── scopus_csv_records/       # 存放 Scopus 导出的 CSV 文件
 │   └── scopus_*.csv
 ├── match_results/            # 匹配结果输出目录
-│   ├── matched/              # 成功匹配的记录（按期刊分）
-│   ├── unmatched/            # 未匹配的记录（按期刊分）
-│   ├── multi_matched/        # 多重匹配的记录（按期刊分）
+│   ├── matched/              # 成功匹配的记录
+│   ├── unmatched/            # 未匹配的记录
+│   ├── multi_matched/        # 多重匹配的记录
 │   ├── ALL_MATCHED.csv       # 所有匹配成功记录合并
-│   ├── ALL_UNMATCHED.csv     # 所有未匹配记录合并（含下载链接）
+│   ├── ALL_UNMATCHED.csv     # 所有未匹配记录合并
 │   └── ALL_MULTI_MATCHED.csv # 所有多重匹配记录合并
+├── pdfs/                     # 复制匹配 PDF 的目标目录
 ├── logs/                     # 日志文件
 └── MATCH_README.md           # 本文档
 ```
 
+## 架构设计
+
+### 模块说明
+
+| 模块 | 说明 |
+|------|------|
+| `data_sources.py` | 数据源抽象层，支持 CSV（Title/DOI）和 MongoDB（label/doi/uuid）字段映射 |
+| `matcher.py` | 核心匹配逻辑，`PDFNameAnalyzer` 自动检测文件名格式 |
+| `exporters.py` | 结果导出器 + `PDFCopier` 复制匹配文件 |
+| `match_records.py` | 命令行入口，简化的参数设计 |
+
+### 核心类
+
+```
+┌─────────────────────────────────────────┐
+│            PDFNameAnalyzer              │
+│  - 自动检测 DOI 格式（如 isj.12026）      │
+│  - 自动检测年份格式（如 title_2024_DSS）  │
+│  - 自动移除特殊编码（#x3f; 等）           │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│             FieldMapping                │
+│  CSV:     title='Title', doi='DOI'      │
+│  MongoDB: title='label', doi='doi',     │
+│           uuid='uuid'                   │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│              PDFCopier                  │
+│  - 复制成功匹配的 PDF                    │
+│  - 使用 uuid 重命名（MongoDB 模式）       │
+└─────────────────────────────────────────┘
+```
+
+## 使用方法
+
+### 基本用法（CSV 数据源）
+
+```powershell
+# 激活虚拟环境
+& .venv\Scripts\Activate.ps1
+
+# 使用单个 CSV 文件
+uv run match_pdfs_title_doi/match_records.py \
+    --pdfs-dir ./pdfs \
+    --csv-file ./scopus_csv_records/scopus_dsr.csv
+
+# 使用 CSV 目录（匹配所有 CSV 文件）
+uv run match_pdfs_title_doi/match_records.py \
+    --pdfs-dir ./pdfs \
+    --csv-dir ./scopus_csv_records
+```
+
+### 使用 MongoDB 数据源
+
+```powershell
+# 先安装 pymongo（如果尚未安装）
+uv add pymongo
+
+# 使用 MongoDB 数据源
+uv run match_pdfs_title_doi/match_records.py \
+    --pdfs-dir ./pdfs \
+    --source mongodb \
+    --mongo-uri "mongodb://localhost:27017" \
+    --mongo-db literature \
+    --mongo-collection papers
+```
+
+### 复制匹配的 PDF
+
+```powershell
+# CSV 模式 - 复制匹配的 PDF（保持原文件名）
+uv run match_pdfs_title_doi/match_records.py \
+    --pdfs-dir ./pdfs \
+    --csv-file ./data.csv \
+    --copy-pdfs \
+    --copy-dir ./matched_pdfs
+
+# MongoDB 模式 - 复制并以 uuid 重命名
+uv run match_pdfs_title_doi/match_records.py \
+    --pdfs-dir ./pdfs \
+    --source mongodb \
+    --mongo-uri "mongodb://localhost:27017" \
+    --mongo-db literature \
+    --mongo-collection papers \
+    --copy-pdfs \
+    --copy-dir ./matched_pdfs
+```
+
+### 命令行参数
+
+#### 必需参数
+
+| 参数 | 说明 |
+|------|------|
+| `--pdfs-dir` | PDF 文件目录（会递归搜索所有 PDF）|
+
+#### 数据源参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--source` | `csv` | 数据源类型：`csv` 或 `mongodb` |
+
+#### CSV 参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--csv-file` | - | CSV 文件路径（与 --csv-dir 二选一）|
+| `--csv-dir` | - | CSV 文件目录（与 --csv-file 二选一）|
+| `--csv-pattern` | `*.csv` | CSV 文件名匹配模式 |
+
+#### MongoDB 参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--mongo-uri` | `mongodb://localhost:27017` | MongoDB 连接字符串 |
+| `--mongo-db` | - | MongoDB 数据库名称（必需）|
+| `--mongo-collection` | - | MongoDB 集合名称（必需）|
+
+#### 输出参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--output-dir` | `./match_results` | 匹配结果输出目录 |
+| `--log-dir` | `./logs` | 日志目录 |
+
+#### PDF 复制参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--copy-pdfs` | False | 是否复制成功匹配的 PDF |
+| `--copy-dir` | `./pdfs` | PDF 复制目标目录 |
+
+## 字段映射
+
+### CSV 数据源
+- `Title` → 用于标题匹配
+- `DOI` → 用于 DOI 匹配
+
+### MongoDB 数据源
+- `label` → 用于标题匹配（对应 CSV 的 Title）
+- `doi` → 用于 DOI 匹配（对应 CSV 的 DOI）
+- `uuid` → 复制 PDF 时的新文件名
+
+## 自动检测逻辑
+
+### PDF 文件名分析
+
+`PDFNameAnalyzer` 会自动分析每个 PDF 文件名，判断其格式：
+
+| 格式 | 特征 | 处理方式 |
+|------|------|----------|
+| DOI 格式 | 如 `isj.12026.pdf` | 提取 DOI 后缀进行匹配 |
+| 年份格式 | 如 `Article-title_2024_Journal.pdf` | 提取年份前的标题部分 |
+| 普通格式 | 其他情况 | 整体作为标题处理 |
+
+### 特殊字符处理
+
+自动移除的特殊编码：
+- `#x3f;` → 删除
+- URL 编码 → 解码
+- 下划线 → 空格（用于标准化）
+
+### 匹配优先级
+
+1. **DOI 精确匹配**（优先级最高）
+2. **标题前缀匹配**（记录标题以 PDF 文件名开头）
+
+## 扩展指南
+
+### 添加新的数据源
+
+继承 `DataSource` 基类：
+
+```python
+from data_sources import DataSource, DataSourceResult, Record, FieldMapping
+
+# 定义字段映射
+MY_FIELD_MAPPING = FieldMapping(
+    title='name',     # 你的数据源中的标题字段
+    doi='identifier', # 你的数据源中的 DOI 字段
+    uuid='id'         # 你的数据源中的唯一标识字段
+)
+
+class MyCustomDataSource(DataSource):
+    def __init__(self, field_mapping: FieldMapping = MY_FIELD_MAPPING, **kwargs):
+        super().__init__(field_mapping=field_mapping, **kwargs)
+    
+    @property
+    def source_type(self) -> str:
+        return "custom"
+    
+    def connect(self) -> bool:
+        # 实现连接逻辑
+        return True
+    
+    def disconnect(self) -> None:
+        # 实现断开连接逻辑
+        pass
+    
+    def get_records(self, source_identifier: str, query=None) -> DataSourceResult:
+        # 实现数据获取逻辑
+        records = [Record(data={'name': '...', 'identifier': '...', 'id': '...'})]
+        return DataSourceResult(
+            records=records,
+            headers=['name', 'identifier', 'id'],
+            source_name=source_identifier
+        )
+```
+
+### 编程方式使用
+
+```python
+from pathlib import Path
+import logging
+
+from match_pdfs_title_doi import (
+    CSVDataSource,
+    MongoDBDataSource,
+    PDFMatcher,
+    PDFCopier,
+    CSV_FIELD_MAPPING,
+    MONGODB_FIELD_MAPPING,
+)
+
+# 设置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 方式1：使用 CSV 数据源
+csv_source = CSVDataSource(
+    csv_file=Path('./data.csv'),
+    field_mapping=CSV_FIELD_MAPPING,
+    logger=logger
+)
+
+# 方式2：使用 MongoDB 数据源
+mongo_source = MongoDBDataSource(
+    connection_string='mongodb://localhost:27017',
+    database='literature',
+    collection='papers',
+    field_mapping=MONGODB_FIELD_MAPPING,
+    logger=logger
+)
+
+# 使用上下文管理器
+with csv_source as source:
+    # 获取记录
+    result = source.get_records()
+    print(f"读取到 {len(result.records)} 条记录")
+    
+    # 创建匹配器
+    matcher = PDFMatcher(
+        logger=logger,
+        title_column=CSV_FIELD_MAPPING.title,
+        doi_column=CSV_FIELD_MAPPING.doi
+    )
+    
+    # 执行批量匹配
+    match_result = matcher.match_all(
+        pdfs_dir=Path('./pdfs'),
+        data_result=result
+    )
+    
+    print(f"匹配成功: {match_result.matched_count}")
+    print(f"未匹配: {match_result.unmatched_count}")
+    
+    # 复制匹配的 PDF
+    copier = PDFCopier(Path('./matched_pdfs'), logger=logger)
+    copier.copy_matched_pdfs(match_result, uuid_field='')
+```
+
 ## 匹配逻辑
 
-### 1. PDF 文件名处理
+### 文本标准化
 
-不同期刊的 PDF 文件名格式不同：
-
-| 期刊类型 | 文件名格式 | 示例 |
-|---------|-----------|------|
-| 有年份 | `{标题部分}_{年份}_{期刊名部分}.pdf` | `A-computer-vision-based_2024_Decision-Su.pdf` |
-| 无年份 | `{标题}.pdf` | `Design Science Research.pdf` |
-| DOI 格式 | `{DOI后缀}.pdf` | `isj.12026.pdf` |
-
-脚本会根据期刊配置自动提取用于匹配的部分。
-
-### 2. 文本标准化
-
-匹配前，脚本会对 PDF 文件名和 CSV 内容进行标准化处理：
+匹配前，对 PDF 文件名和记录内容进行标准化处理：
 - 转换为纯小写字母
-- 移除所有符号（包括空格、连字符、下划线等）
+- 移除所有符号（空格、连字符、下划线等）
 - Title 匹配时移除数字，DOI 匹配时保留数字
 
-例如：
-- 原始：`A-computer-vision-based-concept-model`
-- 标准化：`acomputervisionbasedconceptmodel`
+### 匹配规则
 
-### 3. 匹配规则
-
-**核心匹配逻辑**：CSV 记录的标准化内容必须**从头开始**包含 PDF 文件名的标准化内容。
+**核心匹配逻辑**：记录的标准化内容必须**从头开始**包含 PDF 文件名的标准化内容。
 
 ```
 CSV Title (标准化后): acomputervisionbasedconceptmodeltorecommenddomesticoverseaslike...
@@ -57,191 +325,78 @@ PDF 文件名 (标准化后): acomputervisionbasedconceptmodeltorecommenddomesti
                        ↑ 从头开始完全匹配 ✓
 ```
 
-### 4. 期刊匹配模式
-
-| 期刊 | 匹配列 | 文件名格式 | 特殊处理 |
-|------|--------|-----------|---------|
-| DSS, EJIS, IM, IO, JSIS, JIT | Title | 有年份 | - |
-| JAIS, JMIS, MISQ | Title | 无年份 | - |
-| ISJ | DOI | 无年份 | DOI 后缀匹配 |
-| ISR | Title | 无年份 | 特殊编码移除 |
-
-#### ISJ 期刊的 DOI 匹配
-
-ISJ PDF 文件名为 DOI 后缀，如：
-- `isj.12026.pdf` → DOI: `10.1111/isj.12026`
-- `j.1365-2575.2006.00208.x.pdf` → DOI: `10.1111/j.1365-2575.2006.00208.x`
-
-#### ISR 期刊的特殊处理
-
-ISR PDF 文件名可能包含特殊编码：
-- `#x3a;` → 冒号 `:`
-- `#x3f;` → 问号 `?`
-- `#x22;` → 引号 `"`
-
-脚本会自动移除这些编码后再进行匹配。
-
-### 5. 匹配结果分类
-
-| 结果类型 | 说明 | 输出位置 |
-|---------|------|---------|
-| 成功匹配 | 找到唯一对应的 PDF | `matched/{期刊}_matched.csv` |
-| 未匹配 | 未找到任何对应 PDF | `unmatched/{期刊}_unmatched.csv` |
-| 多重匹配 | 找到多个对应 PDF | `multi_matched/{期刊}_multi_matched.csv` |
-
-## 使用方法
-
-### 基本用法
-
-```powershell
-# 激活虚拟环境
-& .venv\Scripts\Activate.ps1
-
-# 处理所有期刊（自动发现 pdfs/ 下的所有子目录）
-uv run match_pdfs_title_doi/match_records.py
-
-# 处理指定期刊
-uv run match_pdfs_title_doi/match_records.py --journals DSS,EJIS,ISJ
-```
-
-### 命令行参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--input-dir` | `../pdfs` | PDF 文件目录（包含期刊子文件夹）|
-| `--csv-dir` | `./scopus_csv_records` | CSV 文件目录 |
-| `--output-dir` | `./match_results` | 输出目录 |
-| `--log-dir` | `./logs` | 日志目录 |
-| `--doi-journals` | `ISJ` | 使用 DOI 匹配的期刊（逗号分隔）|
-| `--special-journals` | `ISR` | 需要特殊编码处理的期刊（逗号分隔）|
-| `--journals` | (全部) | 要处理的期刊列表（逗号分隔）|
-| `--csv-pattern` | `scopus_*.csv` | CSV 文件名匹配模式 |
-| `--dry-run` | False | 仅检查，不保存结果 |
-
-### 示例
-
-```powershell
-# 使用自定义路径
-uv run match_pdfs_title_doi/match_records.py \
-    --input-dir D:/my_pdfs \
-    --csv-dir D:/csv_files \
-    --output-dir D:/results
-
-# 添加更多 DOI 匹配期刊
-uv run match_pdfs_title_doi/match_records.py --doi-journals ISJ,CUSTOM_JOURNAL
-
-# 添加更多特殊处理期刊
-uv run match_pdfs_title_doi/match_records.py --special-journals ISR,ANOTHER_JOURNAL
-```
-
 ## 输出文件
 
-### 单期刊结果文件
+### 匹配结果文件
 
-#### matched CSV
-原 CSV 列 + `Matched_PDF_Path`（匹配到的 PDF 完整路径）
-
-#### unmatched CSV
-原 CSV 列 + `Unmatch_Reason`（未匹配原因说明）
-
-#### multi_matched CSV
-原 CSV 列 + `Matched_PDF_Paths`（多个匹配路径，分号分隔）+ `Match_Count`（匹配数量）
+| 文件类型 | 新增列 | 说明 |
+|---------|--------|------|
+| `matched.csv` | `Matched_PDF_Path` | 匹配到的 PDF 完整路径 |
+| `unmatched.csv` | `Unmatch_Reason` | 未匹配原因说明 |
+| `multi_matched.csv` | `Matched_PDF_Paths`, `Match_Count` | 多个匹配路径和数量 |
 
 ### 汇总文件
 
 | 文件 | 说明 | 特殊列 |
 |------|------|--------|
-| `ALL_MATCHED.csv` | 所有期刊匹配成功记录合并 | `Journal`（期刊来源）|
-| `ALL_UNMATCHED.csv` | 所有期刊未匹配记录合并 | `Journal`, `DOI_Download_Link`（下载链接）|
-| `ALL_MULTI_MATCHED.csv` | 所有期刊多重匹配记录合并 | `Journal`, `DOI_Download_Link` |
+| `ALL_MATCHED.csv` | 所有匹配成功记录 | - |
+| `ALL_UNMATCHED.csv` | 所有未匹配记录（去重） | `DOI_Download_Link` |
+| `ALL_MULTI_MATCHED.csv` | 所有多重匹配记录 | `DOI_Download_Link` |
 
-**DOI 下载链接**格式为 `https://doi.org/{DOI}`，在 Excel 中点击可直接跳转到出版商页面下载 PDF。
+## MongoDB 数据结构
 
-## 重复项检查
+MongoDB 集合中的文档结构：
 
-脚本在匹配前会自动检查：
+```json
+{
+  "_id": ObjectId("..."),
+  "label": "A computer vision based concept model...",
+  "doi": "10.1016/j.dss.2024.114123",
+  "uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "authors": "Author1; Author2",
+  "year": 2024,
+  // 其他字段...
+}
+```
 
-1. **PDF 文件名重复**：同一期刊下是否有标准化后相同的文件名
-2. **CSV 列重复**：匹配列（Title/DOI）是否有重复值
-
-如果发现重复项，脚本会显示详情并等待用户确认（按 Enter 继续）。
-
-## 日志文件
-
-日志文件保存在 `logs/` 目录，命名格式：`match_log_YYYYMMDD_HHMMSS.log`
-
-日志包含：
-- 详细的匹配过程（DEBUG 级别）
-- 匹配成功/失败信息（INFO 级别）
-- 警告和错误信息
-
-## 测试结果示例
-
-使用 `scopus_dsr.csv`（包含 340 条 Design Science Research 相关记录）对所有期刊进行匹配：
-
-| 期刊 | PDF 数 | 成功匹配 | 匹配率 | 说明 |
-|------|--------|---------|--------|------|
-| DSS | 68 | 64 | 94% | Title 匹配，有年份 |
-| EJIS | 140 | 51 | 36% | Title 匹配，有年份 |
-| IM | 22 | 22 | 100% | Title 匹配，有年份 |
-| IO | 2 | 2 | 100% | Title 匹配，有年份 |
-| ISJ | 72 | 14 | 19% | DOI 匹配 |
-| ISR | 841 | 19 | 2% | Title 匹配 + 特殊编码 |
-| JAIS | 40 | 36 | 90% | Title 匹配，无年份 |
-| JIT | 6 | 5 | 83% | Title 匹配，有年份 |
-| JMIS | 110 | 38 | 35% | Title 匹配，无年份 |
-| JSIS | 6 | 6 | 100% | Title 匹配，有年份 |
-| MISQ | 35 | 26 | 74% | Title 匹配，无年份 |
-| **总计** | **1342** | **283** | **21%** | - |
-
-**说明**：
-- 匹配率 = 成功匹配数 / PDF 文件数
-- 未匹配数较高是因为 CSV 只包含 Design Science Research 相关文献，而 PDF 文件夹包含期刊的其他文献
-- ISR 的 PDF 数量特别多（841）但 CSV 中 ISR 文献较少，导致匹配率低
+关键字段说明：
+- `label`: 文献标题，用于标题匹配
+- `doi`: 数字对象标识符，用于 DOI 匹配
+- `uuid`: 唯一标识符，复制 PDF 时作为新文件名
 
 ## 常见问题
 
-### Q: 匹配率很低怎么办？
+
+### Q: MongoDB 连接失败怎么办？
+
 A: 检查以下几点：
-- CSV 文件是否包含该期刊的文献记录
-- PDF 文件名格式是否符合预期
-- 查看日志文件了解详细匹配过程
-- 检查 `ALL_UNMATCHED.csv` 中的 `DOI_Download_Link` 手动下载缺失的 PDF
+1. 确保已安装 pymongo：`uv add pymongo`
+2. 确认 MongoDB 服务正在运行
+3. 检查连接字符串格式是否正确
+4. 验证用户权限和网络访问
 
-### Q: 如何处理新的期刊？
-A: 
-- 如果是 DOI 匹配，添加到 `--doi-journals` 参数
-- 如果需要特殊编码处理，添加到 `--special-journals` 参数
-- 默认使用 Title 匹配（无年份模式）
+### Q: 如何处理特殊文件名？
 
-### Q: 多重匹配如何解决？
-A: 
-1. 查看 `multi_matched` 或 `ALL_MULTI_MATCHED.csv` 输出
-2. 手动检查哪个 PDF 是正确的匹配
-3. 删除重复的 PDF 文件后重新运行
+A: v3.0 自动处理以下情况：
+- `#x3f;` 等 URL 编码会被自动移除
+- 年份格式（如 `_2024_`）会被自动检测
+- DOI 格式（如 `isj.12026`）会被自动识别
 
-### Q: 未匹配的记录如何处理？
-A: 
-1. 打开 `ALL_UNMATCHED.csv`
-2. 点击 `DOI_Download_Link` 列中的链接
-3. 在浏览器中下载 PDF 到对应期刊目录
-4. 重新运行匹配脚本
+## 版本历史
 
-## 工作流程建议
+### v3.0.0 (2025-01-20)
+- 简化 API：移除期刊特定配置
+- 新增 `PDFNameAnalyzer`：自动检测文件名格式
+- 新增 `FieldMapping`：支持不同数据源的字段映射
+- 新增 `PDFCopier`：复制匹配 PDF 并以 uuid 重命名
+- MongoDB 支持：`label`/`doi`/`uuid` 字段映射
 
-1. **准备阶段**
-   - 将 PDF 文件按期刊分类放入 `pdfs/` 对应子目录
-   - 将 Scopus 导出的 CSV 放入 `scopus_csv_records/`
+### v2.0.0 (2025-01-20)
+- 重构为面向对象架构
+- 新增 MongoDB 数据源支持
+- 模块化设计
 
-2. **匹配阶段**
-   ```powershell
-   uv run match_pdfs_title_doi/match_records.py
-   ```
-
-3. **补充阶段**
-   - 检查 `ALL_UNMATCHED.csv` 中需要的文献
-   - 通过 DOI 链接下载缺失的 PDF
-   - 重新运行匹配
-
-4. **后续处理**
-   - 使用 `ALL_MATCHED.csv` 中的 `Matched_PDF_Path` 进行 MineRU 批量转换
+### v1.0.0 (2025-01-20)
+- 初始版本
+- 支持 CSV 数据源
+- Title 和 DOI 匹配模式

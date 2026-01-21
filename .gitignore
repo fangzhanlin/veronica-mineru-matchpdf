@@ -1,6 +1,8 @@
 bak/
 pdfs/
 outputs_api/
+*.zip
+*.pdf
 *.env
 *.csv
 *.txt

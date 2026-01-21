@@ -8,5 +8,6 @@ dependencies = [
     "aiohttp>=3.13.3",
     "httpx>=0.28.1",
     "mineru[all]>=2.7.1",
+    "pymongo>=4.16.0",
     "requests>=2.32.5",
 ]
